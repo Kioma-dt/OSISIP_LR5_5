@@ -7,7 +7,7 @@
 // g++ -std=c++17 -O2 -Wall -Wextra src/client/main.cpp -o build/client.exe -lws2_32
 
 // foreach ($i in 0..2) {
-//     Start-Process -FilePath "build/client.exe" -ArgumentList "--name u$i --student_id 1 --clients 3 --count 100 --run 1 --max_len 256"
+//     Start-Process -FilePath "build/client.exe" -ArgumentList "--name u$i --student_id 1 --clients 3 --count 100 --run 1 --max_len 256 --quiet"
 // }
 
 struct Options
@@ -22,6 +22,7 @@ struct Options
     int count = 100;
     int run = 1;
     int maxLen = 256;
+    bool quiet = false;
 
     Options(int argc, char **argv, bool server)
     {
@@ -33,19 +34,28 @@ struct Options
             allowed.insert({"--name", "--clients", "--count", "--run", "--max_len"});
 
         std::map<string, string> values;
-        for (int i = 1; i < argc; i += 2)
+        for (int i = 1; i < argc;)
         {
-            string key = argv[i];
+            string key = argv[i++];
+
+            if (key == "--quiet")
+            {
+                if (quiet)
+                    throw runtime_error("duplicate: --quiet");
+                quiet = true;
+                continue;
+            }
+
             if (!allowed.count(key))
                 throw runtime_error("unknown option: " + key);
 
-            if (i + 1 >= argc || string(argv[i + 1]).rfind("--", 0) == 0)
+            if (i >= argc || string(argv[i]).rfind("--", 0) == 0)
                 throw runtime_error("missing value: " + key);
 
-            if (!values.emplace(key, argv[i + 1]).second)
+            if (!values.emplace(key, argv[i++]).second)
                 throw runtime_error("duplicate: " + key);
         }
-        
+
         auto integer = [&](const string &key, int fallback, int lo, int hi)
         {
             return values.count(key) ? number(values.at(key), lo, hi) : fallback;

@@ -204,9 +204,15 @@ inline Msg get(SOCKET s, Deadline until)
     transfer(s, body.data(), int(len), false, until);
     return decode(body);
 }
+
+inline bool quietLog = false;
+
 inline void logEvent(const string &role, const string &id, const string &peer,
                      const string &op, int req, const string &result)
 {
+    if (quietLog && (result == "OK" || result == "closed" || result == "idle"))
+        return;
+        
     static std::mutex lock;
     std::lock_guard<std::mutex> guard(lock);
     SYSTEMTIME t;

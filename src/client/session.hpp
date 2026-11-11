@@ -18,7 +18,8 @@ struct Session
         if (m.to != name)
             throw runtime_error("wrong recipient");
 
-        logEvent("CLIENT", name, peer, "RECV_" + m.type, m.id, "OK");
+        logEvent("CLIENT", name, peer, "RECV_" + m.type, m.id,
+                 m.type == "ERROR" ? m.text : "OK");
 
         if (m.type == "SEND")
             deliver(m);
@@ -32,7 +33,7 @@ struct Session
         tx += 4 + encode(q).size();
         logEvent("CLIENT", name, peer, "SEND_" + type, serial, "OK");
         auto until = Clock::now() + ms * 1ms;
-        
+
         for (;;)
         {
             Msg r = read(until);

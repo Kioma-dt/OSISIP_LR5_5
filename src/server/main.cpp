@@ -110,6 +110,8 @@ try
 {
     SetConsoleOutputCP(CP_UTF8);
     Options opt(argc, argv, true);
+    quietLog = opt.quiet;
+    
     Winsock ws;
     auto a = address(opt.host, opt.port);
     Chat chat(opt.timeout);

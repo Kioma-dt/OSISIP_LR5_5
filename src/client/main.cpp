@@ -76,6 +76,8 @@ try
 {
     SetConsoleOutputCP(CP_UTF8);
     Options opt(argc, argv, false);
+    quietLog = opt.quiet;
+    
     Winsock ws;
     Session c;
     c.name = opt.name;

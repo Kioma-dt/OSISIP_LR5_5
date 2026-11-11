@@ -1,2 +1,0 @@
-run,host_port,clients,name,count,timeout_ms,student_id,seed,max_len,connect_ms,total_ms,sent,replies,ok,delivered,errors,timeouts,avg_send_ms,send_per_s,tx_bytes,rx_bytes
-1,127.0.0.1:2001,3,u0,100,60000,1,1097,256,0.3991,631.913,100,100,100,100,0,0,4.24479,235.501,15066,15502

@@ -12,6 +12,44 @@ inline double millis(Deadline start)
     return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
 }
 
+inline void appendResult(const string &header, const string &row)
+{
+    std::filesystem::create_directories("data");
+
+    HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\LR5_ResultsCsv");
+    if (!mutex)
+        throw runtime_error("CreateMutexW failed");
+
+    DWORD status = WaitForSingleObject(mutex, 10000);
+    if (status != WAIT_OBJECT_0 && status != WAIT_ABANDONED)
+    {
+        CloseHandle(mutex);
+        throw runtime_error("Cannot lock data/results.csv");
+    }
+
+    struct Guard
+    {
+        HANDLE mutex;
+        ~Guard()
+        {
+            ReleaseMutex(mutex);
+            CloseHandle(mutex);
+        }
+    } guard{mutex};
+
+    std::ofstream file("data/results.csv", std::ios::app | std::ios::ate);
+    if (!file)
+        throw runtime_error("Cannot open data/results.csv");
+
+    if (file.tellp() == 0)
+        file << header << '\n';
+
+    file << row << '\n';
+    file.close();
+    if (!file)
+        throw runtime_error("Cannot write data/results.csv");
+}
+
 inline void bench(Session &c, int n, int count, int run, int studentId, int maxLen, double connectMs)
 {
     int index = number(c.name.substr(1), 0, n - 1);
@@ -138,16 +176,12 @@ inline void bench(Session &c, int n, int count, int run, int studentId, int maxL
         << ',' << studentId << ',' << seed << ',' << maxLen << ',' << connectMs << ',' << elapsed << ',' << sent << ',' << replies << ',' << ok
         << ',' << received << ',' << errors << ',' << timeouts << ',' << (ok ? sum / ok : 0)
         << ',' << (sendMs ? ok * 1000 / sendMs : 0) << ',' << c.tx - tx0 << ',' << c.rx - rx0;
+        
     std::cout << header << '\n'
               << row.str() << '\n';
-    std::filesystem::create_directories("data");
-    string path = "data/run-" + std::to_string(run) + "-n" + std::to_string(n) + "-" + c.name + ".csv";
-    std::ofstream file(path);
-    file << header << '\n'
-         << row.str() << '\n';
-    file.close();
-    if (!file)
-        throw runtime_error("cannot write " + path);
+
+    appendResult(header, row.str());
+
     if (errors || timeouts || received != count)
         throw runtime_error("incomplete run");
 }
