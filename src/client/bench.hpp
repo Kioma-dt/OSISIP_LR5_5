@@ -76,7 +76,7 @@ inline void bench(Session &c, int n, int count, int run, int studentId, int maxL
     int received = 0, sent = 0, replies = 0, ok = 0, errors = 0, timeouts = 0;
     double sum = 0, sendMs = 0;
     auto start = Clock::now();
-    size_t tx0 = c.tx, rx0 = c.rx;
+    const size_t rx0 = c.rx;
     bool go = false;
     c.deliver = [&](const Msg &m)
     {
@@ -169,14 +169,17 @@ inline void bench(Session &c, int n, int count, int run, int studentId, int maxL
     }
 
     double elapsed = millis(start);
+    const size_t rxBytes = c.rx - rx0;
+    const double rxBytesPerSec = elapsed > 0.0 ? 1000.0 * rxBytes / elapsed : 0.0;
     string header = "run,host_port,clients,name,count,timeout_ms,student_id,seed,max_len,connect_ms,total_ms,sent,replies,ok,"
-                    "delivered,errors,timeouts,avg_send_ms,send_per_s,tx_bytes,rx_bytes";
+                    "delivered,errors,timeouts,avg_send_ms,send_per_s,rx_bytes_per_s,rx_bytes";
     std::ostringstream row;
     row << run << ',' << c.peer << ',' << n << ',' << c.name << ',' << count << ',' << c.ms
         << ',' << studentId << ',' << seed << ',' << maxLen << ',' << connectMs << ',' << elapsed << ',' << sent << ',' << replies << ',' << ok
         << ',' << received << ',' << errors << ',' << timeouts << ',' << (ok ? sum / ok : 0)
-        << ',' << (sendMs ? ok * 1000 / sendMs : 0) << ',' << c.tx - tx0 << ',' << c.rx - rx0;
-        
+         << ',' << (sendMs ? ok * 1000 / sendMs : 0)
+        << ',' << rxBytesPerSec << ',' << rxBytes;
+
     std::cout << header << '\n'
               << row.str() << '\n';
 

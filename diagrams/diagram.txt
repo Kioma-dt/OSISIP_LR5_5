@@ -1,0 +1,42 @@
+@startuml
+hide footbox
+
+participant "Клиент alice" as Alice
+participant "Сервер" as Server
+participant "Клиент bob" as Bob
+
+Server -> Server : Начать прослушивание порта
+Alice -> Server : Установить TCP-соединение
+Alice -> Server : LOGIN (id=1, from=alice)
+Server -> Server : Добавить alice в список пользователей
+Server --> Alice : OK (id=1)
+
+Bob -> Server : Установить TCP-соединение
+Bob -> Server : LOGIN (id=1, from=bob)
+Server -> Server : Добавить bob в список пользователей
+Server --> Bob : OK (id=1)
+
+
+Alice -> Server : LIST_USERS (id=2)
+Server --> Alice : OK (id=2, text="alice bob")
+
+Alice -> Server : SEND (id=3, to=bob, text="Привет!")
+Server ->> Bob : SEND (id=3, from=alice, to=bob, text="Привет!")
+
+Server --> Alice : OK (id=3)
+
+
+Bob -> Server : LOGOUT (id=2)
+Server --> Bob : OK (id=2)
+Server -> Server : Удалить bob из списка и закрыть его сеанс
+
+Alice -> Server : SEND (id=4, to=bob, text="Ты здесь?")
+Server --> Alice : ERROR (id=4, text="unknown recipient")
+
+... В течение timeout_ms сервер не получает кадр от alice ...
+Server -> Server : Удалить alice из списка и закрыть её сеанс
+Alice-> Alice: Завершение работы из-за закрытого соединения
+
+... В течение idle_ms нет активных сеансов и новых подключений ...
+Server -> Server : Закрыть слушающий сокет и завершить работу
+@enduml
