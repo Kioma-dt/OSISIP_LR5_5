@@ -1,17 +1,113 @@
-#include "../common/net.hpp"
+#include "session.hpp"
+#include <conio.h>
+#include <sstream>
 
-//g++ -std=c++17 -O2 -Wall -Wextra src/client/main.cpp -o build\client.exe -lws2_32
-int main() {
-    try {
-        Winsock ws;
-        Socket socket;
-        dial(socket.s, address("127.0.0.1", 20000), 5000);
-        put(socket.s, {"PING", 1, "alice", "server", "hello"}, 5000);
-        Msg r = get(socket.s, Clock::now() + 5s);
+void interactive(Session &c)
+{
+    c.deliver = [](const Msg &m)
+    { 
+        std::cout << "\n"
+                << m.from << "> " << m.text << '\n'; 
+    };
+    
+    std::cout << "Commands: LIST_USERS | SEND name text | LOGOUT\n";
+    SetConsoleOutputCP(CP_UTF8);
+    std::wstring line;
+    for (;;)
+    {
+        if (ready(c.socket.s, false, Clock::now() + 15ms))
+            c.incoming(Clock::now() + c.ms * 1ms);
+        if (!_kbhit())
+            continue;
+        int key = _getwch();
+        if (key == 0 || key == 224)
+        {
+            _getwch();
+            continue;
+        }
+        if (key == 8 && !line.empty())
+        {
+            line.pop_back();
+            std::cout << "\b \b" << std::flush;
+        }
+        if (key >= 32 && line.size() < 16000)
+        {
+            wchar_t ch = static_cast<wchar_t>(key);
+            line += ch;
+            DWORD written;
+            WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &ch, 1, &written, nullptr);
+        }
+        if (key != 13)
+            continue;
+        std::cout << '\n';
+        if (line.empty())
+            continue;
+        int bytes = WideCharToMultiByte(CP_UTF8, 0, line.data(), int(line.size()), nullptr, 0, nullptr, nullptr);
+        string utf8(bytes, ' ');
+        WideCharToMultiByte(CP_UTF8, 0, line.data(), int(line.size()), utf8.data(), bytes, nullptr, nullptr);
+        std::istringstream in(utf8);
+        line.clear();
+        string op, to, text;
+        if (!(in >> op))
+            continue;
+        if (op == "SEND")
+        {
+            in >> to;
+            std::getline(in >> std::ws, text);
+        }
+        else
+        {
+            to = "server";
+            std::getline(in >> std::ws, text);
+        }
+        if (!nameOK(op) || !nameOK(to))
+        {
+            std::cout << "Invalid command or name\n";
+            continue;
+        }
+        Msg r = c.ask(op, to, text);
         std::cout << r.type << " " << r.text << '\n';
-        return r.type != "OK" || r.id != 1 || r.text != "hello";
-    } 
-    catch (const std::exception& e) {
-        std::cerr << e.what() << '\n'; return 1;
+        if (op == "LOGOUT" && r.type == "OK")
+            return;
+    }
+}
+
+// g++ -std=c++17 -O2 -Wall -Wextra src/client/main.cpp -o build\client.exe -lws2_32
+int main(int argc, char **argv)
+{
+    try
+    {
+        if (argc < 2 || argc > 5)
+            throw runtime_error("client NAME [host [port [timeout_ms]]]");
+
+        Winsock ws;
+        Session c;
+        c.name = argv[1];
+        if (!nameOK(c.name) || c.name == "server")
+            throw runtime_error("invalid client name");
+
+        auto a = address(argc > 2 ? argv[2] : "127.0.0.1",
+            argc > 3 ? number(argv[3], 20000, 29999) : 20000);
+        c.ms = argc > 4 ? number(argv[4], 1, 3600000) : 60000;
+        c.peer = endpoint(a);
+        dial(c.socket.s, a, c.ms);
+        logEvent("CLIENT", c.name, c.peer, "CONNECT", 0, "OK");
+        c.deliver = [](const Msg &)
+        { 
+            throw runtime_error("delivery before login reply");
+        };
+
+        Msg login = c.ask("LOGIN");
+
+        if (login.type == "ERROR")
+            throw runtime_error(login.text);
+
+        interactive(c);
+        shutdown(c.socket.s, SD_SEND);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "CLIENT: " << e.what() << '\n';
+        return 1;
     }
 }

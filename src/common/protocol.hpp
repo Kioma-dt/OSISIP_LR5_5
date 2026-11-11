@@ -3,50 +3,54 @@
 #include <stdexcept>
 #include <string>
 
-using std::string;
 using std::runtime_error;
+using std::string;
 
-inline int number(const string& s, int lo, int hi) {
+inline int number(const string &s, int lo, int hi)
+{
     int n = 0;
     auto result = std::from_chars(s.data(), s.data() + s.size(), n);
-    if (result.ec != std::errc{} 
-        || result.ptr != s.data() + s.size() 
-        || n < lo 
-        || n > hi)
+    if (result.ec != std::errc{} || result.ptr != s.data() + s.size() || n < lo || n > hi)
         throw runtime_error("invalid number: " + s);
     return n;
 }
 
-inline bool nameOK(const string& s) {
+inline bool nameOK(const string &s)
+{
     return !s.empty() && s.size() <= 32 &&
-        s.find_first_not_of(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") 
-            == string::npos;
+           s.find_first_not_of(
+               "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") == string::npos;
 }
 
-struct Msg {
+struct Msg
+{
     string type;
     int id;
     string from, to, text;
 };
 
-inline string encode(const Msg& m) {
+inline string encode(const Msg &m)
+{
     return "1\n" + m.type + "\n" + std::to_string(m.id) + "\n" +
            m.from + "\n" + m.to + "\n" + m.text;
 }
 
-inline Msg decode(const string& s) {
+inline Msg decode(const string &s)
+{
     size_t pos = 0;
-    auto field = [&]() {
+    auto field = [&]()
+    {
         auto end = s.find('\n', pos);
-        if (end == string::npos) {
+        if (end == string::npos)
+        {
             throw runtime_error("missing field");
         }
         string value = s.substr(pos, end - pos);
         pos = end + 1;
         return value;
     };
-    if (field() != "1"){
+    if (field() != "1")
+    {
         throw runtime_error("unsupported version");
     }
 
