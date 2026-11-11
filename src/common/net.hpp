@@ -13,14 +13,39 @@ using Clock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
 using Deadline = Clock::time_point;
 
-inline void wsa(const char *fn, int code = WSAGetLastError())
-{
-    char buf[512]{};
-    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                   nullptr, code, 0, buf, sizeof buf, nullptr);
-    throw runtime_error(string(fn) + " WSA=" + std::to_string(code) + " " + buf);
+inline string winErrorText(DWORD code) {
+    wchar_t message[1024]{};
+    DWORD length = FormatMessageW(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr, code, 0, message, 1024, nullptr
+    );
+
+    while (length > 0 &&
+           (message[length - 1] == L'\r' || message[length - 1] == L'\n')) {
+        --length;
+    }
+
+    if (length == 0) return "Error description unavailable";
+
+    int bytes = WideCharToMultiByte(
+        CP_UTF8, 0, message, static_cast<int>(length),
+        nullptr, 0, nullptr, nullptr
+    );
+    if (bytes == 0) return "Error description unavailable";
+
+    string text(bytes, '\0');
+    WideCharToMultiByte(
+        CP_UTF8, 0, message, static_cast<int>(length),
+        text.data(), bytes, nullptr, nullptr
+    );
+    return text;
 }
 
+inline void wsa(const char* fn, int code = WSAGetLastError()) {
+    throw runtime_error(
+        string(fn) + " WSA=" + std::to_string(code) + " " + winErrorText(code)
+    );
+}
 struct Winsock
 {
     Winsock()
@@ -127,6 +152,7 @@ inline void dial(SOCKET s, const sockaddr_in &a, int ms)
     if (e)
         wsa("connect", e);
 }
+
 inline void transfer(SOCKET s, char *p, int left, bool writing, Deadline until)
 {
     while (left > 0)

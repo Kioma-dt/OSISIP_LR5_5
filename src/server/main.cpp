@@ -1,17 +1,16 @@
+#include "../common/net.hpp"
+#include "../common/options.hpp"
 #include <algorithm>
 #include <future>
 #include <memory>
 #include <map>
 #include <vector>
 
-#include "../common/net.hpp"
-
 struct Peer
 {
     SOCKET socket;
     string endpoint;
 };
-
 struct Chat
 {
     std::mutex mutex;
@@ -23,13 +22,11 @@ struct Chat
     {
         string name;
         int id = 0;
-
         auto reply = [&](const Msg &m)
         {
             put(client.s, m, timeout);
             logEvent("SERVER", name, remote, m.type, m.id, m.type == "ERROR" ? m.text : "OK");
         };
-
         try
         {
             logEvent("SERVER", "-", remote, "ACCEPT", 0, "OK");
@@ -41,7 +38,6 @@ struct Chat
                 logEvent("SERVER", m.from, remote, "RECV_" + m.type, id, "OK");
                 Msg r{"OK", id, "server", m.from, ""};
                 string error;
-
                 if (m.type != "SEND" && (m.to != "server" || !m.text.empty()))
                     error = "bad control fields";
                 else if (m.type == "LOGIN")
@@ -109,58 +105,55 @@ struct Chat
     }
 };
 
-// g++ -std=c++17 -O2 -Wall -Wextra src/server/main.cpp -o build\server.exe -lws2_32
 int main(int argc, char **argv)
+try
 {
-    try
+    SetConsoleOutputCP(CP_UTF8);
+    Options opt(argc, argv, true);
+    Winsock ws;
+    auto a = address(opt.host, opt.port);
+    Chat chat(opt.timeout);
+    int idle = opt.idle;
+    Socket listener;
+    if (bind(listener.s, reinterpret_cast<sockaddr *>(&a), sizeof a))
+        wsa("bind");
+    if (listen(listener.s, SOMAXCONN))
+        wsa("listen");
+    logEvent("SERVER", "server", endpoint(a), "LISTEN", 0, "OK");
+    std::vector<std::future<void>> tasks;
+    auto since = Clock::now();
+    for (;;)
     {
-        if (argc > 5)
-            throw runtime_error("server [host [port [timeout_ms [idle_ms]]]]");
-        Winsock ws;
-        auto a = address(argc > 1 ? argv[1] : "127.0.0.1", argc > 2 ? number(argv[2], 20000, 29999) : 20000);
-        Chat chat(argc > 3 ? number(argv[3], 1, 3600000) : 60000);
-        int idle = argc > 4 ? number(argv[4], 1, 3600000) : 60000;
-        Socket listener;
-        if (bind(listener.s, reinterpret_cast<sockaddr *>(&a), sizeof a))
-            wsa("bind");
-        if (listen(listener.s, SOMAXCONN))
-            wsa("listen");
-        logEvent("SERVER", "server", endpoint(a), "LISTEN", 0, "OK");
-        std::vector<std::future<void>> tasks;
-        auto since = Clock::now();
-        for (;;)
-        {
-            tasks.erase(std::remove_if(tasks.begin(), tasks.end(), [](auto &f)
-                                       {
-                if (f.wait_for(0ms) != std::future_status::ready) return false;
-                f.get();
-                return true; }),
-                        tasks.end());
-            if (!tasks.empty())
-                since = Clock::now();
-            if (tasks.empty() && Clock::now() - since >= idle * 1ms)
-                break;
-            if (!ready(listener.s, false, Clock::now() + 50ms))
-                continue;
-            sockaddr_in peer{};
-            int size = sizeof peer;
-            SOCKET raw = accept(listener.s, reinterpret_cast<sockaddr *>(&peer), &size);
-            if (raw == INVALID_SOCKET)
-            {
-                if (WSAGetLastError() == WSAEWOULDBLOCK)
-                    continue;
-                wsa("accept");
-            }
-            auto socket = std::make_shared<Socket>(raw);
+        tasks.erase(std::remove_if(tasks.begin(), tasks.end(), [](auto &f)
+                                   {
+            if (f.wait_for(0ms) != std::future_status::ready) return false;
+            f.get();
+            return true; }),
+                    tasks.end());
+        if (!tasks.empty())
             since = Clock::now();
-            tasks.push_back(std::async(std::launch::async, [&, socket, peer]
-                                       { chat.serve(*socket, endpoint(peer)); }));
+        if (tasks.empty() && Clock::now() - since >= idle * 1ms)
+            break;
+        if (!ready(listener.s, false, Clock::now() + 50ms))
+            continue;
+        sockaddr_in peer{};
+        int size = sizeof peer;
+        SOCKET raw = accept(listener.s, reinterpret_cast<sockaddr *>(&peer), &size);
+        if (raw == INVALID_SOCKET)
+        {
+            if (WSAGetLastError() == WSAEWOULDBLOCK)
+                continue;
+            wsa("accept");
         }
-        logEvent("SERVER", "server", endpoint(a), "STOP", 0, "idle");
+        auto socket = std::make_shared<Socket>(raw);
+        since = Clock::now();
+        tasks.push_back(std::async(std::launch::async, [&, socket, peer]
+                                   { chat.serve(*socket, endpoint(peer)); }));
     }
-    catch (const std::exception &e)
-    {
-        std::cerr << "SERVER: " << e.what() << '\n';
-        return 1;
-    }
+    logEvent("SERVER", "server", endpoint(a), "STOP", 0, "idle");
+}
+catch (const std::exception &e)
+{
+    std::cerr << "SERVER: " << e.what() << '\n';
+    return 1;
 }

@@ -1,15 +1,14 @@
 #include "session.hpp"
+#include "bench.hpp"
+#include "../common/options.hpp"
 #include <conio.h>
 #include <sstream>
 
 void interactive(Session &c)
 {
     c.deliver = [](const Msg &m)
-    { 
-        std::cout << "\n"
-                << m.from << "> " << m.text << '\n'; 
-    };
-    
+    { std::cout << "\n"
+                << m.from << "> " << m.text << '\n'; };
     std::cout << "Commands: LIST_USERS | SEND name text | LOGOUT\n";
     SetConsoleOutputCP(CP_UTF8);
     std::wstring line;
@@ -72,42 +71,34 @@ void interactive(Session &c)
     }
 }
 
-// g++ -std=c++17 -O2 -Wall -Wextra src/client/main.cpp -o build\client.exe -lws2_32
 int main(int argc, char **argv)
+try
 {
-    try
-    {
-        if (argc < 2 || argc > 5)
-            throw runtime_error("client NAME [host [port [timeout_ms]]]");
-
-        Winsock ws;
-        Session c;
-        c.name = argv[1];
-        if (!nameOK(c.name) || c.name == "server")
-            throw runtime_error("invalid client name");
-
-        auto a = address(argc > 2 ? argv[2] : "127.0.0.1",
-            argc > 3 ? number(argv[3], 20000, 29999) : 20000);
-        c.ms = argc > 4 ? number(argv[4], 1, 3600000) : 60000;
-        c.peer = endpoint(a);
-        dial(c.socket.s, a, c.ms);
-        logEvent("CLIENT", c.name, c.peer, "CONNECT", 0, "OK");
-        c.deliver = [](const Msg &)
-        { 
-            throw runtime_error("delivery before login reply");
-        };
-
-        Msg login = c.ask("LOGIN");
-
-        if (login.type == "ERROR")
-            throw runtime_error(login.text);
-
+    SetConsoleOutputCP(CP_UTF8);
+    Options opt(argc, argv, false);
+    Winsock ws;
+    Session c;
+    c.name = opt.name;
+    auto a = address(opt.host, opt.port);
+    c.ms = opt.timeout;
+    c.peer = endpoint(a);
+    auto start = Clock::now();
+    dial(c.socket.s, a, c.ms);
+    double connectMs = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    logEvent("CLIENT", c.name, c.peer, "CONNECT", 0, "OK");
+    c.deliver = [](const Msg &)
+    { throw runtime_error("delivery before login reply"); };
+    Msg login = c.ask("LOGIN");
+    if (login.type == "ERROR")
+        throw runtime_error(login.text);
+    if (opt.clients)
+        bench(c, opt.clients, opt.count, opt.run, opt.studentId, opt.maxLen, connectMs);
+    else
         interactive(c);
-        shutdown(c.socket.s, SD_SEND);
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "CLIENT: " << e.what() << '\n';
-        return 1;
-    }
+    shutdown(c.socket.s, SD_SEND);
+}
+catch (const std::exception &e)
+{
+    std::cerr << "CLIENT: " << e.what() << '\n';
+    return 1;
 }
